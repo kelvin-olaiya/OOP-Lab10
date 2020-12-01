@@ -2,10 +2,7 @@ package it.unibo.oop.lab.reactivegui03;
 
 import java.awt.Dimension;
 import java.awt.Toolkit;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.lang.reflect.InvocationTargetException;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -27,7 +24,7 @@ public final class AnotherConcurrentGUI extends JFrame {
     private final JButton up = new JButton("up");
     private final JButton down = new JButton("down");
     private final JButton stop = new JButton("stop");
-
+    private final JButton reset = new JButton("reset");
     /**
      * Builds a new CGUI.
      */
@@ -41,6 +38,7 @@ public final class AnotherConcurrentGUI extends JFrame {
         panel.add(up);
         panel.add(down);
         panel.add(stop);
+        panel.add(reset);
         up.setEnabled(false);
         this.getContentPane().add(panel);
         this.setVisible(true);
@@ -52,34 +50,36 @@ public final class AnotherConcurrentGUI extends JFrame {
         final Agent agent = new Agent();
         final ExecutorService es = Executors.newFixedThreadPool(2);
         es.submit(agent);
-        es.submit(new StoppingAgent(agent));
+        es.submit(new StoppingAgent());
         /*new Thread(agent).start();
         new Thread(new StoppingAgent(agent)).start();*/
         /*
          * Register a listener that stops it
          */
-        stop.addActionListener(new ActionListener() {
-            /**
-             * event handler associated to action event on button stop.
-             * 
-             * @param e
-             *            the action event that will be handled by this listener
-             */
-            @Override
-            public void actionPerformed(final ActionEvent e) {
-                // Agent should be final
+        stop.addActionListener(e -> {
                 agent.stopCounting();
-            }
+                down.setEnabled(true);
+                up.setEnabled(true);
+                reset.setEnabled(true);
+                stop.setEnabled(false);
         });
         up.addActionListener(e -> {
             agent.countUp();
-            down.setEnabled(true);
             up.setEnabled(false);
+            down.setEnabled(true);
+            stop.setEnabled(true);
+            reset.setEnabled(false);
         });
         down.addActionListener(e -> {
             agent.countDown();
-            down.setEnabled(false);
             up.setEnabled(true);
+            down.setEnabled(false);
+            stop.setEnabled(true);
+            reset.setEnabled(false);
+        });
+        reset.addActionListener(e -> {
+            agent.reset();
+            this.display.setText(Integer.toString(agent.counter));
         });
     }
 
@@ -104,17 +104,15 @@ public final class AnotherConcurrentGUI extends JFrame {
 
         @Override
         public void run() {
-            while (!this.stop) {
+            while (true) {
                 try {
                     /*
                      * All the operations on the GUI must be performed by the
                      * Event-Dispatch Thread (EDT)!
                      */
-                    SwingUtilities.invokeAndWait(() -> AnotherConcurrentGUI.this.display.setText(Integer.toString(Agent.this.counter)));
-                    if (this.countDown) {
-                        this.counter--;
-                    } else {
-                        this.counter++;
+                    SwingUtilities.invokeAndWait(() -> AnotherConcurrentGUI.this.display.setText(Integer.toString(this.counter)));
+                    if (!this.stop) {
+                        this.counter += this.countDown ? -1 : 1; 
                     }
                     Thread.sleep(100);
                 } catch (InvocationTargetException | InterruptedException ex) {
@@ -122,7 +120,7 @@ public final class AnotherConcurrentGUI extends JFrame {
                      * This is just a stack trace print, in a real program there
                      * should be some logging and decent error reporting
                      */
-                    //ex.printStackTrace();
+                    ex.printStackTrace();
                 }
             }
         }
@@ -133,31 +131,38 @@ public final class AnotherConcurrentGUI extends JFrame {
         public void stopCounting() {
             this.stop = true;
         }
-        
+
+        public void startCounting() {
+            this.stop = false;
+        }
+
+        public void reset() {
+            this.counter = 0;
+        }
+
         public void countUp() {
             this.countDown = false;
+            this.startCounting();
         }
-        
+
         public void countDown() {
             this.countDown = true;
+            this.startCounting();
         }
     }
     private class StoppingAgent implements Runnable {
 
         private static final int MILLIS_IN_SECOND = 1000;
-        private final Agent chrono;
-
-        StoppingAgent(final Agent chrono) {
-            this.chrono = chrono;
-        }
 
         @Override
         public void run() {
-            try {
-                Thread.sleep(3 * MILLIS_IN_SECOND);
-                SwingUtilities.invokeAndWait(() -> this.chrono.stopCounting());
-            } catch (InterruptedException | InvocationTargetException e) {
-                e.printStackTrace();
+            while (true) {
+                try {
+                    Thread.sleep(3 * MILLIS_IN_SECOND);
+                    stop.doClick();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }
